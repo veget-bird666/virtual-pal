@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"from app.main import app; print\\(''App loaded OK''\\); print\\(''Routes:''\\); [print\\(f''  {r.methods} {r.path}''\\) for r in app.routes]\")"
+    ]
+  }
+}
