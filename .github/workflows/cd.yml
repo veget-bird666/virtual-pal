@@ -8,6 +8,10 @@ on:
       - completed
 
 env:
+  ACR_REGISTRY: crpi-srn5bw1mnm0ifd8o.cn-beijing.personal.cr.aliyuncs.com
+  ACR_NAMESPACE: vegetbird
+  BACKEND_IMAGE: virtual-pal-backend
+  FRONTEND_IMAGE: virtual-pal-frontend
   DEPLOY_DIR: /opt/virtual-pal
 
 jobs:
@@ -18,23 +22,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ── 1. 构建镜像 & 推送到 Docker Hub ──
-      - name: Build and push images
+      # ── 1. 构建镜像 & 推送到 ACR ──
+      - name: Build and push images to ACR
         env:
-          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+          ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+          ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
         run: |
-          echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+          echo "$ACR_PASSWORD" | docker login --username="$ACR_USERNAME" ${{ env.ACR_REGISTRY }} --password-stdin
 
-          docker build -t $DOCKER_USERNAME/virtual-pal-backend:${{ github.sha }} ./backend
-          docker tag $DOCKER_USERNAME/virtual-pal-backend:${{ github.sha }} $DOCKER_USERNAME/virtual-pal-backend:latest
-          docker push $DOCKER_USERNAME/virtual-pal-backend:${{ github.sha }}
-          docker push $DOCKER_USERNAME/virtual-pal-backend:latest
+          BACKEND_TAG="${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.BACKEND_IMAGE }}"
+          FRONTEND_TAG="${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.FRONTEND_IMAGE }}"
 
-          docker build -t $DOCKER_USERNAME/virtual-pal-frontend:${{ github.sha }} ./frontend
-          docker tag $DOCKER_USERNAME/virtual-pal-frontend:${{ github.sha }} $DOCKER_USERNAME/virtual-pal-frontend:latest
-          docker push $DOCKER_USERNAME/virtual-pal-frontend:${{ github.sha }}
-          docker push $DOCKER_USERNAME/virtual-pal-frontend:latest
+          docker build -t $BACKEND_TAG:${{ github.sha }} ./backend
+          docker tag $BACKEND_TAG:${{ github.sha }} $BACKEND_TAG:latest
+          docker push $BACKEND_TAG:${{ github.sha }}
+          docker push $BACKEND_TAG:latest
+
+          docker build -t $FRONTEND_TAG:${{ github.sha }} ./frontend
+          docker tag $FRONTEND_TAG:${{ github.sha }} $FRONTEND_TAG:latest
+          docker push $FRONTEND_TAG:${{ github.sha }}
+          docker push $FRONTEND_TAG:latest
 
       # ── 2. 服务器部署 ──
       - name: Deploy on server
@@ -49,12 +56,19 @@ jobs:
           # 创建部署目录
           ssh $SSH_OPTS $SSH_DEST "mkdir -p ${{ env.DEPLOY_DIR }}"
 
-          # 替换 docker-compose.deploy.yml 中的用户名并传送到服务器
-          sed 's|\${DOCKER_USERNAME}|${{ secrets.DOCKER_USERNAME }}|g' docker-compose.deploy.yml | \
+          # 替换 compose 文件中的镜像地址并传送到服务器
+          # （现在镜像地址已写死，不需要替换占位符了）
+          cat docker-compose.deploy.yml | \
             ssh $SSH_OPTS $SSH_DEST "cat > ${{ env.DEPLOY_DIR }}/docker-compose.yml"
 
-          # 拉取镜像并重启
-          ssh $SSH_OPTS $SSH_DEST "cd ${{ env.DEPLOY_DIR }} && docker compose pull && docker compose up -d && docker image prune -f"
+          # 登录 ACR、拉取镜像、重启
+          ssh $SSH_OPTS $SSH_DEST "
+            echo '${{ secrets.ACR_PASSWORD }}' | docker login --username='${{ secrets.ACR_USERNAME }}' ${{ env.ACR_REGISTRY }} --password-stdin
+            cd ${{ env.DEPLOY_DIR }}
+            docker compose pull
+            docker compose up -d
+            docker image prune -f
+          "
 
       # ── 3. 健康检查 ──
       - name: Health check

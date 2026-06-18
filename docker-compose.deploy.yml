@@ -1,8 +1,8 @@
 # 部署版 — 用于服务器生产环境
-# 镜像从 Docker Hub 拉取（需设置 DOCKER_USERNAME 环境变量）
+# 镜像从阿里云 ACR 拉取
 services:
   frontend:
-    image: ${DOCKER_USERNAME}/virtual-pal-frontend:latest
+    image: crpi-srn5bw1mnm0ifd8o.cn-beijing.personal.cr.aliyuncs.com/vegetbird/virtual-pal-frontend:latest
     container_name: virtual-pal-frontend
     ports:
       - "80:80"
@@ -11,7 +11,7 @@ services:
     restart: unless-stopped
 
   backend:
-    image: ${DOCKER_USERNAME}/virtual-pal-backend:latest
+    image: crpi-srn5bw1mnm0ifd8o.cn-beijing.personal.cr.aliyuncs.com/vegetbird/virtual-pal-backend:latest
     container_name: virtual-pal-backend
     ports:
       - "8000:8000"
