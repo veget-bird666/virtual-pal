@@ -36,14 +36,15 @@ jobs:
 
       # ── 3. SCP 到服务器 ──
       - name: Copy to server
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: root
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          source: "deploy/*"
-          target: ${{ env.DEPLOY_DIR }}
-          strip_components: 2
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          scp -o StrictHostKeyChecking=no -o ConnectTimeout=30 -i ~/.ssh/id_deploy \
+            deploy/backend.tar.gz \
+            deploy/frontend.tar.gz \
+            deploy/docker-compose.yml \
+            root@${{ secrets.SERVER_HOST }}:${{ env.DEPLOY_DIR }}/
 
       # ── 4. 服务器部署 ──
       - name: Load images and restart services
