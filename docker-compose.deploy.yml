@@ -1,0 +1,34 @@
+# 部署版 — 用于服务器生产环境（镜像由 CD 通过 SCP 传送）
+services:
+  frontend:
+    image: virtual-pal-frontend:latest
+    container_name: virtual-pal-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  backend:
+    image: virtual-pal-backend:latest
+    container_name: virtual-pal-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_HOST=redis
+    depends_on:
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: virtual-pal-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+volumes:
+  redis_data:

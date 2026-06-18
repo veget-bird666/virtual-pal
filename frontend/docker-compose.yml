@@ -1,0 +1,21 @@
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: virtual-pal-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  # 开发模式下可用的后端（注释掉则纯前端独立运行）
+  # backend:
+  #   image: virtual-pal-backend:latest
+  #   ports:
+  #     - "8000:8000"
+
+networks:
+  default:
+    name: virtual-pal-network

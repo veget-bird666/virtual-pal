@@ -216,3 +216,55 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ====================
+# Vue / Node.js
+# ====================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+lerna-debug.log*
+
+# Vue build output
+dist/
+dist-ssr/
+*.local
+
+# Editor directories & files
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Environment files (local overrides)
+.env.local
+.env.*.local
+
+# TypeScript
+*.tsbuildinfo
+
+# ====================
+# Docker
+# ====================
+docker-compose.override.yml
+.docker/
+
+# ====================
+# FastAPI / Backend runtime
+# ====================
+# SQLite databases (if used locally)
+*.sqlite3
+*.db
+
+# ====================
+# Logs & temp
+# ====================
+*.log
+tmp/
+temp/
