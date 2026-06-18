@@ -73,5 +73,11 @@ jobs:
       # ── 3. 健康检查 ──
       - name: Health check
         run: |
-          sleep 5
-          curl -f http://${{ secrets.SERVER_HOST }}/api/v1/health
+          echo ">>> Waiting for backend to be ready..."
+          for i in $(seq 1 10); do
+            curl -sf http://${{ secrets.SERVER_HOST }}:8000/api/v1/health && break
+            echo "Waiting... ($i)"
+            sleep 3
+          done
+          echo ">>> Verifying..."
+          curl -f http://${{ secrets.SERVER_HOST }}:8000/api/v1/health
