@@ -1,0 +1,83 @@
+name: CD
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    branches: [main]
+    types:
+      - completed
+
+env:
+  BACKEND_IMAGE: virtual-pal-backend
+  FRONTEND_IMAGE: virtual-pal-frontend
+  DEPLOY_DIR: /opt/virtual-pal
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── 1. 构建镜像 ──
+      - name: Build Docker images
+        run: |
+          docker build -t ${{ env.BACKEND_IMAGE }}:${{ github.sha }} ./backend
+          docker build -t ${{ env.FRONTEND_IMAGE }}:${{ github.sha }} ./frontend
+
+      # ── 2. 打包：压缩镜像 + 部署用 compose 文件 ──
+      - name: Package images and config
+        run: |
+          mkdir -p /tmp/deploy
+          docker save ${{ env.BACKEND_IMAGE }}:${{ github.sha }} | gzip > /tmp/deploy/backend.tar.gz
+          docker save ${{ env.FRONTEND_IMAGE }}:${{ github.sha }} | gzip > /tmp/deploy/frontend.tar.gz
+          cp docker-compose.deploy.yml /tmp/deploy/docker-compose.yml
+
+      # ── 3. SCP 到服务器 ──
+      - name: Copy to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: root
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          source: "/tmp/deploy/*"
+          target: ${{ env.DEPLOY_DIR }}
+          strip_components: 2
+
+      # ── 4. 服务器部署 ──
+      - name: Load images and restart services
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: root
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            set -e
+            cd ${{ env.DEPLOY_DIR }}
+
+            # 加载新镜像
+            docker load -i backend.tar.gz
+            docker load -i frontend.tar.gz
+
+            # 标记为 latest（docker compose 引用 latest）
+            docker tag ${{ env.BACKEND_IMAGE }}:${{ github.sha }} ${{ env.BACKEND_IMAGE }}:latest
+            docker tag ${{ env.FRONTEND_IMAGE }}:${{ github.sha }} ${{ env.FRONTEND_IMAGE }}:latest
+
+            # 启动服务
+            docker compose up -d
+
+            # 清理：保留最近 3 个 SHA 版本，其余删掉
+            for img in ${{ env.BACKEND_IMAGE }} ${{ env.FRONTEND_IMAGE }}; do
+              docker images "$img" --format "{{.Tag}}" \
+                | grep -v latest \
+                | sort -r \
+                | tail -n +4 \
+                | xargs -rI{} docker rmi "$img:{}" 2>/dev/null || true
+            done
+
+      # ── 5. 健康检查 ──
+      - name: Health check
+        run: |
+          sleep 5
+          curl -f http://${{ secrets.SERVER_HOST }}/api/v1/health
