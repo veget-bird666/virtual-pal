@@ -8,8 +8,6 @@ on:
       - completed
 
 env:
-  BACKEND_IMAGE: virtual-pal-backend
-  FRONTEND_IMAGE: virtual-pal-frontend
   DEPLOY_DIR: /opt/virtual-pal
 
 jobs:
@@ -20,65 +18,83 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ── 1. 构建镜像 ──
-      - name: Build Docker images
+      # ── 1. 构建镜像 & 推送到 Docker Hub ──
+      - name: Build and push images
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
         run: |
-          docker build -t ${{ env.BACKEND_IMAGE }}:${{ github.sha }} ./backend
-          docker build -t ${{ env.FRONTEND_IMAGE }}:${{ github.sha }} ./frontend
+          echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
 
-      # ── 2. 打包：压缩镜像 + 部署用 compose 文件 ──
-      - name: Package images and config
-        run: |
-          mkdir -p deploy
-          docker save ${{ env.BACKEND_IMAGE }}:${{ github.sha }} | gzip > deploy/backend.tar.gz
-          docker save ${{ env.FRONTEND_IMAGE }}:${{ github.sha }} | gzip > deploy/frontend.tar.gz
-          cp docker-compose.deploy.yml deploy/docker-compose.yml
+          docker build -t $DOCKER_USERNAME/virtual-pal-backend:${{ github.sha }} ./backend
+          docker tag $DOCKER_USERNAME/virtual-pal-backend:${{ github.sha }} $DOCKER_USERNAME/virtual-pal-backend:latest
+          docker push $DOCKER_USERNAME/virtual-pal-backend:${{ github.sha }}
+          docker push $DOCKER_USERNAME/virtual-pal-backend:latest
 
-      # ── 3. 传送到服务器 ──
-      - name: Copy files to server
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/id_deploy
-          chmod 600 ~/.ssh/id_deploy
-          SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=15 -i ~/.ssh/id_deploy"
-          cat deploy/backend.tar.gz | ssh $SSH_OPTS root@${{ secrets.SERVER_HOST }} "cat > ${{ env.DEPLOY_DIR }}/backend.tar.gz"
-          cat deploy/frontend.tar.gz | ssh $SSH_OPTS root@${{ secrets.SERVER_HOST }} "cat > ${{ env.DEPLOY_DIR }}/frontend.tar.gz"
-          cat deploy/docker-compose.yml | ssh $SSH_OPTS root@${{ secrets.SERVER_HOST }} "cat > ${{ env.DEPLOY_DIR }}/docker-compose.yml"
+          docker build -t $DOCKER_USERNAME/virtual-pal-frontend:${{ github.sha }} ./frontend
+          docker tag $DOCKER_USERNAME/virtual-pal-frontend:${{ github.sha }} $DOCKER_USERNAME/virtual-pal-frontend:latest
+          docker push $DOCKER_USERNAME/virtual-pal-frontend:${{ github.sha }}
+          docker push $DOCKER_USERNAME/virtual-pal-frontend:latest
 
-      # ── 4. 服务器部署 ──
+      # ── 2. 服务器部署 ──
       - name: Deploy on server
-        run: |
-          SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=30 -i ~/.ssh/id_deploy"
-          ssh $SSH_OPTS root@${{ secrets.SERVER_HOST }} bash -s << 'REMOTE'
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: root
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
             set -e
+            mkdir -p ${{ env.DEPLOY_DIR }}
             cd ${{ env.DEPLOY_DIR }}
 
-            echo ">>> Loading backend image..."
-            docker load -i backend.tar.gz
+            echo ">>> Writing docker-compose.yml..."
+            cat > docker-compose.yml << 'COMPOSE'
+services:
+  frontend:
+    image: ${{ secrets.DOCKER_USERNAME }}/virtual-pal-frontend:latest
+    container_name: virtual-pal-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
 
-            echo ">>> Loading frontend image..."
-            docker load -i frontend.tar.gz
+  backend:
+    image: ${{ secrets.DOCKER_USERNAME }}/virtual-pal-backend:latest
+    container_name: virtual-pal-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_HOST=redis
+    depends_on:
+      redis:
+        condition: service_started
+    restart: unless-stopped
 
-            echo ">>> Tagging images..."
-            docker tag ${{ env.BACKEND_IMAGE }}:${{ github.sha }} ${{ env.BACKEND_IMAGE }}:latest
-            docker tag ${{ env.FRONTEND_IMAGE }}:${{ github.sha }} ${{ env.FRONTEND_IMAGE }}:latest
+  redis:
+    image: redis:7-alpine
+    container_name: virtual-pal-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+COMPOSE
+
+            echo ">>> Pulling latest images..."
+            docker compose pull
 
             echo ">>> Starting services..."
             docker compose up -d
 
-            echo ">>> Cleaning up old versions..."
-            for img in ${{ env.BACKEND_IMAGE }} ${{ env.FRONTEND_IMAGE }}; do
-              docker images "$img" --format "{{.Tag}}" \
-                | grep -v latest \
-                | sort -r \
-                | tail -n +4 \
-                | xargs -rI{} docker rmi "$img:{}" 2>/dev/null || true
-            done
+            echo ">>> Cleaning up..."
+            docker image prune -f
 
-            echo ">>> Deploy complete!"
-          REMOTE
-
-      # ── 5. 健康检查 ──
+      # ── 3. 健康检查 ──
       - name: Health check
         run: |
           sleep 5

@@ -1,7 +1,8 @@
-# 部署版 — 用于服务器生产环境（镜像由 CD 通过 SCP 传送）
+# 部署版 — 用于服务器生产环境
+# 镜像从 Docker Hub 拉取（需设置 DOCKER_USERNAME 环境变量）
 services:
   frontend:
-    image: virtual-pal-frontend:latest
+    image: ${DOCKER_USERNAME}/virtual-pal-frontend:latest
     container_name: virtual-pal-frontend
     ports:
       - "80:80"
@@ -10,7 +11,7 @@ services:
     restart: unless-stopped
 
   backend:
-    image: virtual-pal-backend:latest
+    image: ${DOCKER_USERNAME}/virtual-pal-backend:latest
     container_name: virtual-pal-backend
     ports:
       - "8000:8000"
