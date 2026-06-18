@@ -29,10 +29,10 @@ jobs:
       # ── 2. 打包：压缩镜像 + 部署用 compose 文件 ──
       - name: Package images and config
         run: |
-          mkdir -p /tmp/deploy
-          docker save ${{ env.BACKEND_IMAGE }}:${{ github.sha }} | gzip > /tmp/deploy/backend.tar.gz
-          docker save ${{ env.FRONTEND_IMAGE }}:${{ github.sha }} | gzip > /tmp/deploy/frontend.tar.gz
-          cp docker-compose.deploy.yml /tmp/deploy/docker-compose.yml
+          mkdir -p deploy
+          docker save ${{ env.BACKEND_IMAGE }}:${{ github.sha }} | gzip > deploy/backend.tar.gz
+          docker save ${{ env.FRONTEND_IMAGE }}:${{ github.sha }} | gzip > deploy/frontend.tar.gz
+          cp docker-compose.deploy.yml deploy/docker-compose.yml
 
       # ── 3. SCP 到服务器 ──
       - name: Copy to server
@@ -41,7 +41,7 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: root
           key: ${{ secrets.SERVER_SSH_KEY }}
-          source: "/tmp/deploy/*"
+          source: "deploy/*"
           target: ${{ env.DEPLOY_DIR }}
           strip_components: 2
 
